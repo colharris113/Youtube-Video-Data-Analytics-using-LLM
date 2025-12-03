@@ -52,11 +52,9 @@ LONG_MIN_DURATION = int(os.getenv("LONG_MIN_DURATION", "1800"))  # Videos over 3
 
 # ==================== Rival Channels Configuration ====================
 # List of competitor channels to compare against
-RIVAL_CHANNELS = [
-    # Add competitor channel names here
-    # Example: "Competitor Channel 1",
-    #          "Competitor Channel 2",
-]
+# Format in .env: RIVAL_CHANNELS=Channel1,Channel2,Channel3
+RIVAL_CHANNELS_STR = os.getenv("RIVAL_CHANNELS", "")
+RIVAL_CHANNELS = [channel.strip() for channel in RIVAL_CHANNELS_STR.split(",") if channel.strip()]
 
 # ==================== Validation Functions ====================
 def validate_config() -> bool:
