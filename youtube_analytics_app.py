@@ -71,6 +71,56 @@ def ollama_available() -> bool:
         return False
 
 
+def parse_duration_to_seconds(duration_iso: str) -> int:
+    """
+    Parse ISO 8601 duration string to total seconds.
+    Examples: "PT1H30M15S" -> 5415, "PT5M30S" -> 330, "PT60S" -> 60
+    """
+    if not duration_iso or not duration_iso.startswith("PT"):
+        return 0
+
+    # Remove PT prefix
+    duration = duration_iso[2:]
+    total_seconds = 0
+
+    # Parse hours
+    if "H" in duration:
+        hours_part = duration.split("H")[0]
+        total_seconds += int(hours_part) * 3600
+        duration = duration.split("H")[1] if "H" in duration else ""
+
+    # Parse minutes
+    if "M" in duration:
+        minutes_part = duration.split("M")[0]
+        total_seconds += int(minutes_part) * 60
+        duration = duration.split("M")[1] if "M" in duration else ""
+
+    # Parse seconds
+    if "S" in duration:
+        seconds_part = duration.split("S")[0]
+        total_seconds += int(seconds_part)
+
+    return total_seconds
+
+
+def classify_content_type(duration_seconds: int, live_status: str = None) -> str:
+    """
+    Classify video content type based on duration and live status.
+    Uses thresholds from config.py (SHORT_MAX_DURATION, LONG_MIN_DURATION).
+    """
+    # Check for live streams first (both 'live' and 'upcoming' are live streams)
+    if live_status and live_status in ["live", "upcoming"]:
+        return "Live"
+
+    # Classify based on duration
+    if duration_seconds <= SHORT_MAX_DURATION:
+        return "Short"
+    elif duration_seconds > LONG_MIN_DURATION:  # Use > not >= for exclusive threshold
+        return "Long-form"
+    else:
+        return "Regular"
+
+
 def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50, order: str = "date") -> pd.DataFrame:
     youtube = build("youtube", "v3", developerKey=api_key)
     ch_resp = youtube.search().list(part="snippet", q=channel_name, type="channel", maxResults=1).execute()
@@ -91,16 +141,37 @@ def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50
         sn = item["snippet"]
         stt = item.get("statistics", {})
         det = item.get("contentDetails", {})
+
+        # Parse duration and classify content type
+        duration_iso = det.get("duration", "")
+        duration_seconds = parse_duration_to_seconds(duration_iso)
+        live_status = sn.get("liveBroadcastContent", "none")
+        content_type = classify_content_type(duration_seconds, live_status)
+
+        # Calculate engagement rates
+        views = int(stt.get("viewCount", 0))
+        likes = int(stt.get("likeCount", 0))
+        comments = int(stt.get("commentCount", 0))
+
+        engagement_rate = (likes / views * 100) if views > 0 else 0
+        comment_rate = (comments / views * 100) if views > 0 else 0
+
         data.append({
             "Title": sn.get("title"),
             "Published": pd.to_datetime(sn.get("publishedAt")),
             "Description": sn.get("description", ""),
             "Video_ID": item["id"],
             "URL": f"https://www.youtube.com/watch?v={item['id']}",
-            "Duration": det.get("duration", ""),
-            "Views": int(stt.get("viewCount", 0)),
-            "Likes": int(stt.get("likeCount", 0)),
-            "Comments": int(stt.get("commentCount", 0))
+            "Duration": duration_iso,
+            "Duration_Seconds": duration_seconds,
+            "Content_Type": content_type,
+            "Live_Status": live_status,
+            "Views": views,
+            "Likes": likes,
+            "Comments": comments,
+            "Engagement_Rate": round(engagement_rate, 2),
+            "Comment_Rate": round(comment_rate, 2),
+            "Thumbnail": sn.get("thumbnails", {}).get("high", {}).get("url", "")
         })
     return pd.DataFrame(data)
 
@@ -131,6 +202,110 @@ def plot_top_videos(df, metric="Views", top_n=10):
     ax.invert_yaxis()
     for bar in bars:
         ax.text(bar.get_width(), bar.get_y() + bar.get_height()/2, f"{int(bar.get_width()):,}", va="center")
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+def plot_content_type_distribution(df):
+    """Plot pie chart showing distribution of content types."""
+    if df.empty or "Content_Type" not in df.columns:
+        return
+
+    content_counts = df["Content_Type"].value_counts()
+    if content_counts.empty:
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    colors = plt.cm.Set3(np.linspace(0, 1, len(content_counts)))
+    wedges, texts, autotexts = ax.pie(
+        content_counts.values,
+        labels=content_counts.index,
+        autopct='%1.1f%%',
+        colors=colors,
+        startangle=90
+    )
+    ax.set_title("Content Type Distribution", fontsize=14, weight="bold")
+    plt.setp(autotexts, size=10, weight="bold")
+    plt.setp(texts, size=11)
+    st.pyplot(fig)
+
+
+def plot_content_type_performance(df, metric="Views"):
+    """Plot bar chart comparing performance metrics by content type."""
+    if df.empty or "Content_Type" not in df.columns or metric not in df.columns:
+        return
+
+    # Calculate average metric by content type
+    performance = df.groupby("Content_Type")[metric].mean().sort_values(ascending=False)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars = ax.bar(performance.index, performance.values, color="lightcoral", edgecolor="black")
+    ax.set_title(f"Average {metric} by Content Type", fontsize=14, weight="bold")
+    ax.set_xlabel("Content Type")
+    ax.set_ylabel(f"Average {metric}")
+    ax.grid(axis='y', alpha=0.3)
+
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.01 * max(performance.values),
+                f"{int(height):,}" if metric in ["Views", "Likes", "Comments"] else f"{height:.2f}",
+                ha='center', va='bottom')
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+def plot_content_type_trends(df, metric="Views"):
+    """Plot trend of metric over time by content type."""
+    if df.empty or "Content_Type" not in df.columns or metric not in df.columns:
+        return
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Plot each content type separately
+    for content_type in df["Content_Type"].unique():
+        type_data = df[df["Content_Type"] == content_type].sort_values("Published")
+        if not type_data.empty:
+            ax.plot(type_data["Published"], type_data[metric], marker="o", linewidth=2,
+                   label=content_type, markersize=6)
+
+    ax.set_title(f"{metric} Trend by Content Type", fontsize=14, weight="bold")
+    ax.set_xlabel("Published Date")
+    ax.set_ylabel(metric)
+    ax.legend(title="Content Type")
+    ax.grid(alpha=0.3)
+    plt.xticks(rotation=30)
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+def plot_duration_distribution(df):
+    """Plot histogram of video durations."""
+    if df.empty or "Duration_Seconds" not in df.columns:
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Create bins for duration
+    durations = df["Duration_Seconds"]
+    max_duration = min(durations.max(), 7200)  # Cap at 2 hours for visualization
+
+    # Create histogram
+    ax.hist(durations, bins=30, range=(0, max_duration), edgecolor='black', alpha=0.7)
+    ax.set_title("Video Duration Distribution", fontsize=14, weight="bold")
+    ax.set_xlabel("Duration (seconds)")
+    ax.set_ylabel("Number of Videos")
+    ax.grid(alpha=0.3)
+
+    # Add vertical lines for classification thresholds
+    ax.axvline(x=SHORT_MAX_DURATION, color='red', linestyle='--', alpha=0.7,
+              label=f'Shorts threshold ({SHORT_MAX_DURATION}s)')
+    ax.axvline(x=LONG_MIN_DURATION, color='blue', linestyle='--', alpha=0.7,
+              label=f'Long-form threshold ({LONG_MIN_DURATION}s)')
+
+    ax.legend()
     plt.tight_layout()
     st.pyplot(fig)
 
@@ -234,8 +409,12 @@ else:
 st.sidebar.markdown(f"**Config Status:** :{config_color}[{config_status}]")
 
 # API Key input - show placeholder if config provides one
-api_key_placeholder = YOUTUBE_API_KEY if YOUTUBE_API_KEY and YOUTUBE_API_KEY != "AIzaSyAh-_Q2C198OuyuZJTHqMUDr2hsGTp7lQ4" else ""
+api_key_placeholder = YOUTUBE_API_KEY if YOUTUBE_API_KEY else ""
 api_key = st.sidebar.text_input("YouTube API Key", value=api_key_placeholder, type="password")
+
+# Show warning if no API key is configured
+if not YOUTUBE_API_KEY:
+    st.sidebar.warning("⚠️ No API key configured. Set YOUTUBE_API_KEY in .env file or enter it above.")
 
 # Channel name input - use default from config
 channel_name = st.sidebar.text_input("Channel Name", value=DEFAULT_CHANNEL)
@@ -286,14 +465,42 @@ if st.sidebar.button("🚀 Fetch Channel Data"):
 # ==================== Dashboard ====================
 if not st.session_state.df.empty:
     df = st.session_state.df
-    st.dataframe(df[["Title", "Published", "Views", "Likes", "Comments"]])
 
-    st.markdown("### 📈 Channel Visualizations")
-    metric = st.selectbox("Metric", ["Views", "Likes", "Comments"])
-    top_n = st.slider("Top N Videos", 5, 20, 10)
+    # Display dataframe with new columns
+    st.markdown("### 📊 Video Data")
+    display_columns = ["Title", "Published", "Content_Type", "Views", "Likes", "Comments", "Engagement_Rate", "Duration"]
+    st.dataframe(df[display_columns])
+
+    # Content Type Analytics Section
+    st.markdown("### 🎬 Content Type Analytics")
+    st.markdown(f"**Classification thresholds:** Shorts (< {SHORT_MAX_DURATION}s), Long-form (> {LONG_MIN_DURATION}s)")
+
+    # Content Type Distribution
+    st.markdown("#### Content Type Distribution")
     c1, c2 = st.columns(2)
-    with c1: plot_top_videos(df, metric, top_n)
-    with c2: plot_trend_over_time(df, metric)
+    with c1:
+        plot_content_type_distribution(df)
+    with c2:
+        plot_duration_distribution(df)
+
+    # Content Type Performance
+    st.markdown("#### Performance by Content Type")
+    perf_metric = st.selectbox("Performance Metric", ["Views", "Likes", "Comments", "Engagement_Rate"], key="perf_metric")
+    c3, c4 = st.columns(2)
+    with c3:
+        plot_content_type_performance(df, perf_metric)
+    with c4:
+        plot_content_type_trends(df, perf_metric)
+
+    # Traditional Channel Visualizations
+    st.markdown("### 📈 Channel Visualizations")
+    metric = st.selectbox("Metric", ["Views", "Likes", "Comments"], key="main_metric")
+    top_n = st.slider("Top N Videos", 5, 20, 10, key="top_n")
+    c5, c6 = st.columns(2)
+    with c5:
+        plot_top_videos(df, metric, top_n)
+    with c6:
+        plot_trend_over_time(df, metric)
 
     st.markdown("### 🧠 Chat with the Channel (Offline)")
     use_kw = st.checkbox("Use Keyword/Entity Filter", True)

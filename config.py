@@ -26,9 +26,10 @@ except ImportError:
     env_loaded = False
 
 # ==================== YouTube API Configuration ====================
-# Priority: 1. Environment variable 2. .env file 3. Default value
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "AIzaSyAh-_Q2C198OuyuZJTHqMUDr2hsGTp7lQ4")
-DEFAULT_CHANNEL = os.getenv("DEFAULT_YOUTUBE_CHANNEL", "The Uranium Hunter")
+# Priority: 1. Environment variable 2. .env file 3. Empty string (no default)
+# WARNING: Never hardcode API keys in source code!
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+DEFAULT_CHANNEL = os.getenv("DEFAULT_YOUTUBE_CHANNEL", "")
 
 # ==================== Ollama Configuration ====================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -55,29 +56,43 @@ RIVAL_CHANNELS = [
 def validate_config() -> bool:
     """Validate configuration and return True if valid."""
     errors = []
+    warnings = []
 
-    if not YOUTUBE_API_KEY or YOUTUBE_API_KEY == "AIzaSyAh-_Q2C198OuyuZJTHqMUDr2hsGTp7lQ4":
-        errors.append("Using default API key. Set YOUTUBE_API_KEY environment variable for production.")
+    # Critical errors (will cause app to fail)
+    if not YOUTUBE_API_KEY:
+        errors.append("YouTube API key is required. Set YOUTUBE_API_KEY environment variable or in .env file.")
 
-    if not DEFAULT_CHANNEL or DEFAULT_CHANNEL == "The Uranium Hunter":
-        errors.append("Using default channel. Set DEFAULT_YOUTUBE_CHANNEL environment variable.")
+    if not DEFAULT_CHANNEL:
+        warnings.append("No default channel set. Set DEFAULT_YOUTUBE_CHANNEL environment variable or in .env file.")
+
+    # Warnings (app will work but might not be optimal)
+    if YOUTUBE_API_KEY and len(YOUTUBE_API_KEY) < 20:
+        warnings.append("YouTube API key appears to be too short. Please verify your API key.")
 
     if errors:
-        print("Configuration warnings:")
+        print("Configuration ERRORS (must be fixed):")
         for error in errors:
             print(f"  - {error}")
         return False
+
+    if warnings:
+        print("Configuration warnings:")
+        for warning in warnings:
+            print(f"  - {warning}")
 
     return True
 
 def get_config_summary() -> dict:
     """Return a summary of the current configuration."""
     return {
-        "youtube_api_key_set": bool(YOUTUBE_API_KEY and YOUTUBE_API_KEY != "AIzaSyAh-_Q2C198OuyuZJTHqMUDr2hsGTp7lQ4"),
-        "default_channel": DEFAULT_CHANNEL,
+        "youtube_api_key_set": bool(YOUTUBE_API_KEY),
+        "youtube_api_key_length": len(YOUTUBE_API_KEY) if YOUTUBE_API_KEY else 0,
+        "default_channel": DEFAULT_CHANNEL or "[Not set]",
         "ollama_configured": OLLAMA_BASE_URL != "http://localhost:11434",
         "ollama_model": OLLAMA_MODEL,
         "max_results": DEFAULT_MAX_RESULTS,
         "order": DEFAULT_ORDER,
         "rival_channels_count": len(RIVAL_CHANNELS),
+        "short_max_duration": SHORT_MAX_DURATION,
+        "long_min_duration": LONG_MIN_DURATION,
     }
