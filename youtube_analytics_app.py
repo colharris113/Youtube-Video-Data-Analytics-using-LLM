@@ -61,6 +61,14 @@ except ImportError as e:
     AUTH_MODULES_AVAILABLE = False
     print(f"[WARNING] Auth modules not available: {e}")
 
+# Import content analyzer for Phase 3
+try:
+    from content_analyzer import ContentAnalyzer
+    CONTENT_ANALYZER_AVAILABLE = True
+except ImportError as e:
+    CONTENT_ANALYZER_AVAILABLE = False
+    print(f"[WARNING] Content analyzer not available: {e}")
+
 
 # ==================== Streamlit Setup ====================
 st.set_page_config(page_title="YouTube Growth Analytics Platform", layout="wide")
@@ -669,6 +677,119 @@ if not st.session_state.df.empty:
         plot_top_videos(df, metric, top_n)
     with c6:
         plot_trend_over_time(df, metric)
+
+    # Content Analysis Section (Phase 3)
+    if CONTENT_ANALYZER_AVAILABLE and not df.empty:
+        st.markdown("---")
+        st.markdown("### 🧠 AI Content Analysis")
+        st.info("Phase 3: Intelligent content analysis using NLP and machine learning to identify patterns and opportunities.")
+
+        # Initialize content analyzer
+        analyzer = ContentAnalyzer()
+
+        # Content analysis tabs
+        content_tabs = st.tabs(["Content Insights", "Content Clustering", "Recommendations"])
+
+        with content_tabs[0]:
+            st.markdown("#### Content Insights")
+            if st.button("Analyze Content Patterns", key="analyze_content"):
+                with st.spinner("Analyzing content patterns..."):
+                    insights = analyzer.generate_content_insights(df)
+
+                    # Display title analysis
+                    title_analysis = insights.get("title_analysis", {})
+                    if title_analysis:
+                        st.markdown("##### Title Analysis")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Avg Title Length", f"{title_analysis.get('avg_title_length', 0):.1f} chars")
+                        with col2:
+                            st.metric("Min Title Length", title_analysis.get('min_title_length', 0))
+                        with col3:
+                            st.metric("Max Title Length", title_analysis.get('max_title_length', 0))
+
+                        # Display top keywords
+                        keywords = title_analysis.get('title_keywords', [])
+                        if keywords:
+                            st.markdown(f"**Top Title Keywords:** {', '.join(keywords[:10])}")
+
+                    # Display content patterns
+                    patterns = insights.get("content_patterns", {})
+                    if patterns:
+                        st.markdown("##### Content Patterns")
+                        for pattern_name, pattern_titles in patterns.items():
+                            st.markdown(f"**{pattern_name.replace('_', ' ').title()}:** {len(pattern_titles)} videos")
+                            if len(pattern_titles) > 0:
+                                with st.expander(f"Show {len(pattern_titles)} {pattern_name.replace('_', ' ')}"):
+                                    for title in pattern_titles[:5]:
+                                        st.markdown(f"- {title}")
+
+        with content_tabs[1]:
+            st.markdown("#### Content Clustering")
+            st.markdown("Group similar videos based on title and description content.")
+
+            num_clusters = st.slider("Number of Clusters", 2, 10, 5, key="num_clusters")
+
+            if st.button("Cluster Content", key="cluster_content"):
+                with st.spinner(f"Clustering content into {num_clusters} groups..."):
+                    clustered_df = analyzer.cluster_content(df, num_clusters=num_clusters)
+
+                    if clustered_df is not None and 'Cluster' in clustered_df.columns:
+                        st.success(f"Created {clustered_df['Cluster'].nunique()} content clusters")
+
+                        # Display cluster distribution
+                        cluster_counts = clustered_df['Cluster'].value_counts().sort_index()
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        bars = ax.bar(cluster_counts.index.astype(str), cluster_counts.values)
+                        ax.set_xlabel('Cluster')
+                        ax.set_ylabel('Number of Videos')
+                        ax.set_title('Content Cluster Distribution')
+
+                        # Add value labels on bars
+                        for bar in bars:
+                            height = bar.get_height()
+                            ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                                   f'{int(height)}', ha='center', va='bottom')
+
+                        st.pyplot(fig)
+
+                        # Display cluster details
+                        st.markdown("##### Cluster Details")
+                        for cluster_id in sorted(clustered_df['Cluster'].unique()):
+                            cluster_data = clustered_df[clustered_df['Cluster'] == cluster_id]
+                            keywords = cluster_data['Cluster_Keywords'].iloc[0] if 'Cluster_Keywords' in cluster_data.columns else []
+
+                            with st.expander(f"Cluster {cluster_id}: {len(cluster_data)} videos"):
+                                if keywords:
+                                    st.markdown(f"**Keywords:** {', '.join(keywords)}")
+
+                                # Show top videos in cluster
+                                if 'Views' in cluster_data.columns and 'Title' in cluster_data.columns:
+                                    top_videos = cluster_data.nlargest(3, 'Views')[['Title', 'Views']]
+                                    st.markdown("**Top Performing Videos:**")
+                                    for idx, row in top_videos.iterrows():
+                                        st.markdown(f"- {row['Title']} ({row['Views']:,} views)")
+                    else:
+                        st.warning("Content clustering failed. Make sure you have scikit-learn installed: `pip install scikit-learn`")
+
+        with content_tabs[2]:
+            st.markdown("#### Content Strategy Recommendations")
+            if st.button("Generate Recommendations", key="generate_recommendations"):
+                with st.spinner("Generating content strategy recommendations..."):
+                    insights = analyzer.generate_content_insights(df)
+                    recommendations = insights.get("recommendations", [])
+
+                    if recommendations:
+                        st.success(f"Generated {len(recommendations)} recommendations")
+                        for i, rec in enumerate(recommendations, 1):
+                            st.markdown(f"{i}. {rec}")
+                    else:
+                        st.info("No specific recommendations generated. Try analyzing more content or check your data.")
+    elif not CONTENT_ANALYZER_AVAILABLE:
+        st.markdown("---")
+        st.markdown("### 🧠 AI Content Analysis (Phase 3)")
+        st.warning("Content analyzer not available. Install required packages: `pip install nltk scikit-learn`")
+        st.info("Phase 3 features include content clustering, topic modeling, and AI-powered recommendations.")
 
     # YouTube Analytics API Data (if authenticated)
     if AUTH_MODULES_AVAILABLE and auth_status.get("authenticated", False):
