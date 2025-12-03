@@ -69,27 +69,55 @@ class AnalyticsFetcher:
 
     def _validate_date_range(self, start_date: str, end_date: str) -> Tuple[str, str]:
         """
-        Validate and format date range.
+        Validate and format date range for YouTube Analytics API.
+        Converts relative dates (e.g., '30daysAgo', 'today') to YYYY-MM-DD format.
 
         Args:
-            start_date: Start date in YYYY-MM-DD format or relative string (e.g., '7daysAgo')
-            end_date: End date in YYYY-MM-DD format or relative string (e.g., 'today')
+            start_date: Start date in YYYY-MM-DD format or relative string
+            end_date: End date in YYYY-MM-DD format or relative string
 
         Returns:
-            Tuple of validated (start_date, end_date)
+            Tuple of validated (start_date, end_date) in YYYY-MM-DD format
         """
-        # If dates are already in relative format, return as-is
-        if start_date.endswith('daysAgo') or start_date == 'today':
-            return start_date, end_date
+        from datetime import datetime, timedelta
 
-        # Validate date format
-        try:
-            datetime.strptime(start_date, '%Y-%m-%d')
-            datetime.strptime(end_date, '%Y-%m-%d')
-            return start_date, end_date
-        except ValueError:
-            # If invalid, use default relative dates
-            return '30daysAgo', 'today'
+        # Helper function to parse relative dates
+        def parse_relative_date(date_str: str) -> str:
+            today = datetime.now().date()
+
+            if date_str == 'today':
+                return today.strftime('%Y-%m-%d')
+            elif date_str == 'yesterday':
+                return (today - timedelta(days=1)).strftime('%Y-%m-%d')
+            elif date_str.endswith('daysAgo'):
+                try:
+                    days_ago = int(date_str.replace('daysAgo', ''))
+                    return (today - timedelta(days=days_ago)).strftime('%Y-%m-%d')
+                except ValueError:
+                    # Default to 30 days ago if parsing fails
+                    return (today - timedelta(days=30)).strftime('%Y-%m-%d')
+            else:
+                # Assume it's already in YYYY-MM-DD format
+                try:
+                    datetime.strptime(date_str, '%Y-%m-%d')
+                    return date_str
+                except ValueError:
+                    # Default to 30 days ago if invalid
+                    return (today - timedelta(days=30)).strftime('%Y-%m-%d')
+
+        # Parse both dates
+        parsed_start = parse_relative_date(start_date)
+        parsed_end = parse_relative_date(end_date)
+
+        # Ensure start date is before end date
+        start_dt = datetime.strptime(parsed_start, '%Y-%m-%d')
+        end_dt = datetime.strptime(parsed_end, '%Y-%m-%d')
+
+        if start_dt > end_dt:
+            # Swap if start is after end
+            return parsed_end, parsed_start
+
+        return parsed_start, parsed_end
 
     def fetch_report(self, metrics: List[str], dimensions: List[str],
                      start_date: str = '30daysAgo', end_date: str = 'today',
