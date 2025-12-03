@@ -3,6 +3,25 @@
 ## Overview
 Transform the current basic YouTube analytics tool into a comprehensive growth platform with AI-powered insights, competitive intelligence, and actionable recommendations.
 
+## API Requirements & Google Cloud Setup
+**Current API Usage:**
+- YouTube Data API v3 with API key authentication (implemented)
+- Provides: Basic video metadata, statistics, channel information
+
+**Required API for Enhanced Features:**
+- YouTube Analytics API with OAuth 2.0 authentication (missing)
+- Required for: Watch time, traffic sources, demographics, subscriber attribution
+- Signup: https://console.cloud.google.com/apis/library/youtubeAnalytics.googleapis.com
+
+**OAuth 2.0 Setup Instructions:**
+1. Create/select project in Google Cloud Console
+2. Enable APIs: YouTube Data API v3 & YouTube Analytics API
+3. Create OAuth 2.0 credentials: Application type = "Desktop app"
+4. Configure redirect URIs: `http://localhost:8501`, `http://127.0.0.1:8501`
+5. Configure OAuth consent screen with required scopes
+6. Add test users (your Google account)
+7. Download `client_secret.json` and add to `.env` file
+
 ## ✅ Phase 1: Foundation & Git Setup - COMPLETED
 
 ### ✅ 1.1 Git Branch & Repository Setup
@@ -107,7 +126,54 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 - `test_content_classification.py`: New test suite
 - `ENHANCEMENT_PLAN.md`: This updated plan
 
-**Status**: Phase 2 complete and pushed to GitHub. Ready for Phase 3.
+**Status**: Phase 2 complete and pushed to GitHub. Ready for Phase 2.5.
+
+## Phase 2.5: YouTube Analytics API & OAuth 2.0 Integration
+
+**### 2.5.1 Google Cloud Console Setup**
+- Project creation/selection
+- API enabling (YouTube Data API v3, YouTube Analytics API)
+- OAuth 2.0 credential creation (Desktop app type)
+- Redirect URI configuration for Streamlit (`localhost:8501`)
+- OAuth consent screen configuration with required scopes
+
+**### 2.5.2 OAuth Authentication System**
+- Create `auth_manager.py` module
+- Implement OAuth 2.0 flow using `google-auth-oauthlib`
+- Token storage and automatic refresh logic
+- Support both API key (public data) and OAuth (analytics/private data) modes
+- Secure token encryption and storage
+
+**### 2.5.3 YouTube Analytics API Integration**
+- Create `analytics_fetcher.py` module
+- Functions for fetching Analytics API metrics:
+  - Watch time & audience retention
+  - Traffic source analysis
+  - Demographic insights
+  - Subscriber metrics
+- Date range handling and metric combinations
+- Error handling and retry logic
+
+**### 2.5.4 Enhanced Configuration**
+- Update `config.py` to support OAuth credentials
+- Add environment variables for OAuth (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`)
+- Update `.env.example` template with OAuth variables
+- Configuration validation for both authentication modes
+
+**### 2.5.5 Security Implementation**
+- Encrypted storage for OAuth tokens
+- Token refresh automation
+- Secure credential management
+- Follow Google security best practices
+
+**### 2.5.6 Files Created/Modified**
+- `auth_manager.py`: OAuth 2.0 authentication and token management (new)
+- `analytics_fetcher.py`: YouTube Analytics API integration (new)
+- `config.py`: Enhanced with OAuth credential support
+- `.env.example`: Updated with OAuth environment variables
+- `youtube_analytics_app.py`: Updated with authentication flow
+
+**Status**: Prerequisite for Phase 3 features
 
 ### 2.2 Detailed Video Feedback System
 **Enhanced YouTube API Integration:**
@@ -140,6 +206,8 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 - Device usage patterns
 
 ## Phase 3: Intelligent Content Analysis
+
+**Prerequisite**: Phase 2.5 (API Authentication & Analytics Integration) must be completed first. This phase requires access to YouTube Analytics API data via OAuth 2.0 authentication.
 
 ### 3.1 "What Works" Analysis
 **Content Cluster Analysis:**
@@ -218,12 +286,13 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 ### Architecture Changes:
 
 1. **Modular Code Structure:**
-   - `data_fetcher.py`: YouTube API interactions with caching
+   - `data_fetcher.py`: YouTube Data API v3 interactions with caching
+   - `analytics_fetcher.py`: YouTube Analytics API integration (new)
    - `data_processor.py`: Analytics calculations and transformations
    - `visualizer.py`: Chart and dashboard generation
    - `llm_analyzer.py`: AI-powered insights and recommendations
    - `database.py`: SQLite/PostgreSQL interface for historical data
-   - `auth_manager.py`: OAuth 2.0 and API key management
+   - `auth_manager.py`: OAuth 2.0 and API key management (new)
 
 2. **Data Storage:**
    - SQLite database for historical data persistence
@@ -280,19 +349,26 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 - Basic enhanced analytics dashboard
 - File structure reorganization
 
-### Week 3-4: Advanced Analytics & Subscriber Insights
-- Subscriber analytics implementation
+### Week 3-4: API Authentication & Analytics Integration (Phase 2.5)
+- YouTube Analytics API & OAuth 2.0 setup
+- Google Cloud Console configuration
+- OAuth authentication system implementation
+- Analytics API integration
+- Enhanced configuration for dual authentication modes
+
+### Week 5-6: Intelligent Content Analysis (Phase 3)
 - Content cluster analysis with NLP
 - LLM-powered insights integration
-- Traffic source analysis (with OAuth setup)
+- Traffic source analysis (requires OAuth from Phase 2.5)
+- Subscriber analytics implementation
 
-### Week 5-6: Competitive Intelligence
+### Week 7-8: Competitive Intelligence (Phase 4)
 - Rival channel comparison system
 - Growth recommendations engine
 - UI/UX enhancements
 - Export functionality
 
-### Week 7-8: Polish & Advanced Features
+### Week 9-10: Polish & Advanced Features
 - Advanced LLM features (multi-model, chain-of-thought)
 - Performance optimization
 - Comprehensive testing
@@ -307,6 +383,7 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 5. **Insight Quality:** Actionable recommendations that drive measurable growth
 6. **Reliability:** 99.9% uptime with robust error handling
 7. **Scalability:** Support for 10+ channels with 1000+ videos each
+8. **API Integration:** OAuth authentication success rate > 95%, Analytics API data accuracy > 99%
 
 ## Risks & Mitigations
 
@@ -318,8 +395,9 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 
 ## Next Steps
 1. Review and approve this plan
-2. Begin Phase 1 implementation
-3. Set up weekly progress reviews
-4. Establish testing and quality assurance processes
+2. Set up YouTube Analytics API & OAuth credentials in Google Cloud Console
+3. Begin Phase 2.5 implementation (API Authentication)
+4. Set up weekly progress reviews
+5. Establish testing and quality assurance processes
 
 This plan transforms your current basic analytics tool into a comprehensive YouTube growth platform with AI-powered insights and competitive intelligence, positioning you for accelerated channel growth and improved content strategy.

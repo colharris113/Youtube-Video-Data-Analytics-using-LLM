@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 import numpy as np
-import os, tempfile, re, subprocess
+import os, tempfile, re, subprocess, math
 
 # Import configuration
 try:
@@ -121,6 +121,79 @@ def classify_content_type(duration_seconds: int, live_status: str = None) -> str
         return "Regular"
 
 
+def calculate_video_performance_score(views: int, likes: int, comments: int, duration_seconds: int) -> dict:
+    """
+    Calculate a performance score for a video based on multiple metrics.
+    Returns a dictionary with scores and letter grade (A-F).
+    """
+    if views == 0:
+        return {
+            "performance_score": 0,
+            "performance_grade": "F",
+            "engagement_score": 0,
+            "popularity_score": 0,
+            "interaction_score": 0
+        }
+
+    # Engagement score (likes/views ratio) - weighted 40%
+    engagement_rate = (likes / views) * 100
+    engagement_score = min(engagement_rate * 2, 40)  # Max 40 points
+
+    # Interaction score (comments/views ratio) - weighted 30%
+    comment_rate = (comments / views) * 100
+    interaction_score = min(comment_rate * 3, 30)  # Max 30 points
+
+    # Popularity score (views scaling) - weighted 30%
+    # Logarithmic scale: log10(views) * 10, capped at 30
+    if views > 0:
+        popularity_score = min(math.log10(views) * 10, 30)
+    else:
+        popularity_score = 0
+
+    # Total performance score (0-100)
+    total_score = engagement_score + interaction_score + popularity_score
+
+    # Letter grade
+    if total_score >= 90:
+        grade = "A"
+    elif total_score >= 80:
+        grade = "B"
+    elif total_score >= 70:
+        grade = "C"
+    elif total_score >= 60:
+        grade = "D"
+    elif total_score >= 40:
+        grade = "E"
+    else:
+        grade = "F"
+
+    return {
+        "performance_score": round(total_score, 1),
+        "performance_grade": grade,
+        "engagement_score": round(engagement_score, 1),
+        "popularity_score": round(popularity_score, 1),
+        "interaction_score": round(interaction_score, 1)
+    }
+
+
+def format_duration_human_readable(duration_seconds: int) -> str:
+    """
+    Convert duration in seconds to human-readable format.
+    Examples: 65 -> "1:05", 3665 -> "1:01:05"
+    """
+    if duration_seconds <= 0:
+        return "0:00"
+
+    hours = duration_seconds // 3600
+    minutes = (duration_seconds % 3600) // 60
+    seconds = duration_seconds % 60
+
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    else:
+        return f"{minutes}:{seconds:02d}"
+
+
 def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50, order: str = "date") -> pd.DataFrame:
     youtube = build("youtube", "v3", developerKey=api_key)
     ch_resp = youtube.search().list(part="snippet", q=channel_name, type="channel", maxResults=1).execute()
@@ -156,6 +229,12 @@ def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50
         engagement_rate = (likes / views * 100) if views > 0 else 0
         comment_rate = (comments / views * 100) if views > 0 else 0
 
+        # Calculate performance scores
+        performance_data = calculate_video_performance_score(views, likes, comments, duration_seconds)
+
+        # Format duration for display
+        duration_display = format_duration_human_readable(duration_seconds)
+
         data.append({
             "Title": sn.get("title"),
             "Published": pd.to_datetime(sn.get("publishedAt")),
@@ -163,6 +242,7 @@ def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50
             "Video_ID": item["id"],
             "URL": f"https://www.youtube.com/watch?v={item['id']}",
             "Duration": duration_iso,
+            "Duration_Display": duration_display,
             "Duration_Seconds": duration_seconds,
             "Content_Type": content_type,
             "Live_Status": live_status,
@@ -171,6 +251,11 @@ def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50
             "Comments": comments,
             "Engagement_Rate": round(engagement_rate, 2),
             "Comment_Rate": round(comment_rate, 2),
+            "Performance_Score": performance_data["performance_score"],
+            "Performance_Grade": performance_data["performance_grade"],
+            "Engagement_Score": performance_data["engagement_score"],
+            "Popularity_Score": performance_data["popularity_score"],
+            "Interaction_Score": performance_data["interaction_score"],
             "Thumbnail": sn.get("thumbnails", {}).get("high", {}).get("url", "")
         })
     return pd.DataFrame(data)
