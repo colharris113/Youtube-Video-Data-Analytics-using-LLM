@@ -69,6 +69,14 @@ except ImportError as e:
     CONTENT_ANALYZER_AVAILABLE = False
     print(f"[WARNING] Content analyzer not available: {e}")
 
+# Import competitor analyzer for Phase 3.2
+try:
+    from competitor_analyzer import CompetitorAnalyzer
+    COMPETITOR_ANALYZER_AVAILABLE = True
+except ImportError as e:
+    COMPETITOR_ANALYZER_AVAILABLE = False
+    print(f"[WARNING] Competitor analyzer not available: {e}")
+
 
 # ==================== Streamlit Setup ====================
 st.set_page_config(page_title="YouTube Growth Analytics Platform", layout="wide")
@@ -790,6 +798,136 @@ if not st.session_state.df.empty:
         st.markdown("### 🧠 AI Content Analysis (Phase 3)")
         st.warning("Content analyzer not available. Install required packages: `pip install nltk scikit-learn`")
         st.info("Phase 3 features include content clustering, topic modeling, and AI-powered recommendations.")
+
+    # Competitor Analysis Section (Phase 3.2)
+    if COMPETITOR_ANALYZER_AVAILABLE and api_key and not df.empty:
+        st.markdown("---")
+        st.markdown("### 🥊 Competitive Intelligence")
+        st.info("Phase 3.2: Compare your channel against competitors to identify strengths, weaknesses, and growth opportunities.")
+
+        # Initialize competitor analyzer
+        competitor_analyzer = CompetitorAnalyzer(api_key)
+
+        # Get rival channels from config
+        try:
+            from config import RIVAL_CHANNELS
+            rival_channels = RIVAL_CHANNELS
+        except ImportError:
+            rival_channels = []
+
+        if rival_channels:
+            st.markdown(f"**Configured Competitors:** {', '.join(rival_channels)}")
+
+            if st.button("Analyze Competitors", key="analyze_competitors"):
+                with st.spinner("Fetching competitor data and performing analysis..."):
+                    # Prepare main channel data
+                    main_channel_data = {
+                        'channel_name': channel_name,
+                        'subscriber_count': df['Subscribers'].iloc[0] if 'Subscribers' in df.columns else 0,
+                        'video_count': len(df),
+                        'view_count': df['Views'].sum() if 'Views' in df.columns else 0,
+                        'recent_video_count': len(df),
+                        'total_views_recent': df['Views'].sum() if 'Views' in df.columns else 0,
+                        'avg_views_per_video': df['Views'].mean() if 'Views' in df.columns else 0,
+                        'avg_likes_per_video': df['Likes'].mean() if 'Likes' in df.columns else 0,
+                        'avg_comments_per_video': df['Comments'].mean() if 'Comments' in df.columns else 0,
+                        'engagement_rate': df['Engagement_Rate'].mean() if 'Engagement_Rate' in df.columns else 0
+                    }
+
+                    # Fetch competitor data
+                    competitor_data = competitor_analyzer.fetch_all_competitors(rival_channels, max_results=20)
+
+                    if competitor_data:
+                        st.success(f"Fetched data for {len(competitor_data)} competitors")
+
+                        # Create comparison
+                        comparison_df = competitor_analyzer.compare_channels(main_channel_data, competitor_data)
+
+                        if not comparison_df.empty:
+                            # Display comparison table
+                            st.markdown("#### 📈 Channel Comparison")
+                            display_cols = ['channel_name', 'subscriber_count', 'video_count',
+                                          'avg_views_per_video', 'engagement_rate']
+                            if 'subscribers_relative' in comparison_df.columns:
+                                display_cols.append('subscribers_relative')
+
+                            st.dataframe(comparison_df[display_cols])
+
+                            # Create visualizations
+                            st.markdown("#### 📊 Competitive Analysis")
+
+                            # Subscriber comparison chart
+                            fig1, ax1 = plt.subplots(figsize=(10, 6))
+                            bars1 = ax1.bar(comparison_df['channel_name'], comparison_df['subscriber_count'])
+                            ax1.set_xlabel('Channel')
+                            ax1.set_ylabel('Subscribers')
+                            ax1.set_title('Subscriber Count Comparison')
+                            ax1.tick_params(axis='x', rotation=45)
+
+                            # Highlight main channel
+                            main_idx = comparison_df[comparison_df['is_main_channel']].index[0]
+                            bars1[main_idx].set_color('green')
+
+                            st.pyplot(fig1)
+
+                            # Engagement rate comparison
+                            fig2, ax2 = plt.subplots(figsize=(10, 6))
+                            bars2 = ax2.bar(comparison_df['channel_name'], comparison_df['engagement_rate'])
+                            ax2.set_xlabel('Channel')
+                            ax2.set_ylabel('Engagement Rate')
+                            ax2.set_title('Engagement Rate Comparison (likes + comments per 1000 views)')
+                            ax2.tick_params(axis='x', rotation=45)
+                            bars2[main_idx].set_color('green')
+                            st.pyplot(fig2)
+
+                            # Gap analysis
+                            st.markdown("#### 🔍 Gap Analysis")
+                            gap_analysis = competitor_analyzer.calculate_gap_analysis(main_channel_data, competitor_data)
+
+                            if gap_analysis:
+                                col1, col2 = st.columns(2)
+
+                                with col1:
+                                    if gap_analysis.get('strengths'):
+                                        st.markdown("##### ✅ Your Strengths")
+                                        for strength in gap_analysis['strengths'][:3]:
+                                            st.markdown(f"- {strength}")
+
+                                    if gap_analysis.get('competitive_advantages'):
+                                        st.markdown("##### 🏆 Competitive Advantages")
+                                        for advantage in gap_analysis['competitive_advantages'][:3]:
+                                            st.markdown(f"- {advantage}")
+
+                                with col2:
+                                    if gap_analysis.get('weaknesses'):
+                                        st.markdown("##### ⚠️ Areas to Watch")
+                                        for weakness in gap_analysis['weaknesses'][:3]:
+                                            st.markdown(f"- {weakness}")
+
+                                    if gap_analysis.get('opportunities'):
+                                        st.markdown("##### 🚀 Growth Opportunities")
+                                        for opportunity in gap_analysis['opportunities'][:3]:
+                                            st.markdown(f"- {opportunity}")
+
+                            # Generate insights
+                            st.markdown("#### 💡 Competitive Insights")
+                            insights = competitor_analyzer.generate_competitive_insights(comparison_df, gap_analysis)
+
+                            for insight in insights:
+                                st.info(insight)
+
+                        else:
+                            st.warning("Could not generate comparison. Check your data.")
+                    else:
+                        st.warning("No competitor data fetched. Check competitor channel names and API key.")
+        else:
+            st.warning("No competitor channels configured. Add channels to RIVAL_CHANNELS in config.py")
+            st.info("Example configuration in config.py:\n```python\nRIVAL_CHANNELS = [\n    'Competitor Channel 1',\n    'Competitor Channel 2',\n]\n```")
+    elif not COMPETITOR_ANALYZER_AVAILABLE:
+        st.markdown("---")
+        st.markdown("### 🥊 Competitive Intelligence (Phase 3.2)")
+        st.warning("Competitor analyzer not available. Make sure competitor_analyzer.py is in the project directory.")
+        st.info("Phase 3.2 features include multi-channel comparison, gap analysis, and competitive insights.")
 
     # YouTube Analytics API Data (if authenticated)
     if AUTH_MODULES_AVAILABLE and auth_status.get("authenticated", False):
