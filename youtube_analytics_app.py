@@ -63,9 +63,25 @@ except ImportError as e:
 
 
 # ==================== Streamlit Setup ====================
-st.set_page_config(page_title="YouTube Channel AI Dashboard", layout="wide")
-st.title("📊 YouTube Channel Analytics + Smart Search (Free)")
-st.markdown("Keyword-aware semantic search with optional offline summarization via Ollama Mistral.")
+st.set_page_config(page_title="YouTube Growth Analytics Platform", layout="wide")
+st.title("🚀 YouTube Growth Analytics Platform")
+st.markdown("Advanced analytics with AI-powered insights, competitive intelligence, and growth recommendations.")
+
+# App instructions
+with st.expander("📋 How to use this platform", expanded=True):
+    st.markdown("""
+    ### Getting Started:
+    1. **Enter YouTube API Key** in sidebar (Data API v3)
+    2. **Enter Channel Name** to analyze
+    3. **Click '🚀 Fetch Channel Data'** to load basic analytics
+    4. **Authenticate with Google** for advanced YouTube Analytics API features
+
+    ### Available Features:
+    - **Basic Analytics**: Video performance, content type analysis, trends
+    - **Advanced Analytics** (requires OAuth): Traffic sources, demographics, device usage, subscriber growth
+    - **AI Insights**: Content recommendations, competitive analysis
+    - **Smart Search**: Semantic search across your channel content
+    """)
 
 
 # ==================== Session State ====================
