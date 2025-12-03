@@ -820,19 +820,27 @@ if not st.session_state.df.empty:
 
             if st.button("Analyze Competitors", key="analyze_competitors"):
                 with st.spinner("Fetching competitor data and performing analysis..."):
-                    # Prepare main channel data
-                    main_channel_data = {
-                        'channel_name': channel_name,
-                        'subscriber_count': df['Subscribers'].iloc[0] if 'Subscribers' in df.columns else 0,
-                        'video_count': len(df),
-                        'view_count': df['Views'].sum() if 'Views' in df.columns else 0,
-                        'recent_video_count': len(df),
-                        'total_views_recent': df['Views'].sum() if 'Views' in df.columns else 0,
-                        'avg_views_per_video': df['Views'].mean() if 'Views' in df.columns else 0,
-                        'avg_likes_per_video': df['Likes'].mean() if 'Likes' in df.columns else 0,
-                        'avg_comments_per_video': df['Comments'].mean() if 'Comments' in df.columns else 0,
-                        'engagement_rate': df['Engagement_Rate'].mean() if 'Engagement_Rate' in df.columns else 0
-                    }
+                    # Fetch main channel data (including subscriber count)
+                    with st.spinner("Fetching your channel data..."):
+                        main_channel_data = competitor_analyzer.fetch_channel_data(channel_name, max_results=20)
+
+                    if not main_channel_data:
+                        st.error(f"Could not fetch data for your channel: {channel_name}")
+                        st.stop()
+
+                    # Show what channel was found
+                    actual_channel_name = main_channel_data.get('channel_name', channel_name)
+                    if actual_channel_name.lower() != channel_name.lower():
+                        st.info(f"Channel found: '{actual_channel_name}' (searched for: '{channel_name}')")
+
+                    # Enhance with video data from the DataFrame
+                    main_channel_data['video_count'] = len(df)
+                    main_channel_data['recent_video_count'] = len(df)
+                    main_channel_data['total_views_recent'] = df['Views'].sum() if 'Views' in df.columns else 0
+                    main_channel_data['avg_views_per_video'] = df['Views'].mean() if 'Views' in df.columns else 0
+                    main_channel_data['avg_likes_per_video'] = df['Likes'].mean() if 'Likes' in df.columns else 0
+                    main_channel_data['avg_comments_per_video'] = df['Comments'].mean() if 'Comments' in df.columns else 0
+                    main_channel_data['engagement_rate'] = df['Engagement_Rate'].mean() if 'Engagement_Rate' in df.columns else 0
 
                     # Fetch competitor data
                     competitor_data = competitor_analyzer.fetch_all_competitors(rival_channels, max_results=20)
