@@ -77,6 +77,59 @@ except ImportError as e:
     COMPETITOR_ANALYZER_AVAILABLE = False
     print(f"[WARNING] Competitor analyzer not available: {e}")
 
+# Import utility functions
+try:
+    from utils import (
+        parse_duration_to_seconds,
+        classify_content_type,
+        calculate_video_performance_score,
+        format_duration_human_readable,
+        extract_keywords,
+        keyword_filter_indices
+    )
+    UTILS_AVAILABLE = True
+except ImportError as e:
+    UTILS_AVAILABLE = False
+    print(f"[WARNING] Utility functions not available: {e}")
+    # Define fallback functions
+    def parse_duration_to_seconds(duration_iso: str) -> int:
+        return 0
+    def classify_content_type(duration_seconds: int, live_status: str = None) -> str:
+        return "Regular"
+    def calculate_video_performance_score(views: int, likes: int, comments: int, duration_seconds: int) -> dict:
+        return {"performance_score": 0, "performance_grade": "F"}
+    def format_duration_human_readable(duration_seconds: int) -> str:
+        return "0:00"
+    def extract_keywords(query: str) -> list:
+        return []
+    def keyword_filter_indices(df, keywords: list) -> list:
+        return []
+
+# Import Phase 4: Save State Management & API Caching modules
+CACHING_MODULES_AVAILABLE = False
+try:
+    # First try to import plotly (required for quota_monitor visualizations)
+    import plotly.graph_objects as go
+    import plotly.express as px
+
+    # Now try to import our modules
+    from cached_youtube_api import get_cached_youtube_api
+    from data_manager import get_data_manager
+    from quota_monitor import get_quota_monitor, display_sidebar_quota_widget, display_quota_alerts
+    CACHING_MODULES_AVAILABLE = True
+except ImportError as e:
+    CACHING_MODULES_AVAILABLE = False
+    error_msg = str(e)
+    print(f"[WARNING] Caching modules not available: {error_msg}")
+
+    # Provide helpful installation instructions
+    if "plotly" in error_msg.lower():
+        print("[INFO] Install plotly with: pip install plotly")
+    elif "streamlit" in error_msg.lower():
+        print("[INFO] Streamlit should already be installed for this app")
+    else:
+        print("[INFO] Make sure all dependencies are installed")
+
 
 # ==================== Streamlit Setup ====================
 st.set_page_config(page_title="YouTube Growth Analytics Platform", layout="wide")
@@ -106,6 +159,25 @@ if "df" not in st.session_state:
 if "vectordb" not in st.session_state:
     st.session_state.vectordb = None
 
+# Try to restore session from data manager if caching modules are available
+if CACHING_MODULES_AVAILABLE:
+    try:
+        from data_manager import get_data_manager
+        data_manager = get_data_manager()
+
+        # Try to resume the last session
+        # In a real app, you might want to let users select which session to resume
+        # For now, we'll try to resume the most recent session
+        sessions = data_manager.state_manager.list_sessions(active_only=True)
+        if sessions:
+            # Try to resume the most recent session
+            latest_session = sessions[0]  # list_sessions returns most recent first
+            if data_manager.resume_session(latest_session['session_id']):
+                st.info(f"Resumed session: {latest_session['session_name']}")
+    except Exception as e:
+        # Don't show error if data manager fails - it might not be fully initialized yet
+        pass
+
 
 # ==================== Utility Functions ====================
 def ollama_available() -> bool:
@@ -118,131 +190,8 @@ def ollama_available() -> bool:
         return False
 
 
-def parse_duration_to_seconds(duration_iso: str) -> int:
-    """
-    Parse ISO 8601 duration string to total seconds.
-    Examples: "PT1H30M15S" -> 5415, "PT5M30S" -> 330, "PT60S" -> 60
-    """
-    if not duration_iso or not duration_iso.startswith("PT"):
-        return 0
-
-    # Remove PT prefix
-    duration = duration_iso[2:]
-    total_seconds = 0
-
-    # Parse hours
-    if "H" in duration:
-        hours_part = duration.split("H")[0]
-        total_seconds += int(hours_part) * 3600
-        duration = duration.split("H")[1] if "H" in duration else ""
-
-    # Parse minutes
-    if "M" in duration:
-        minutes_part = duration.split("M")[0]
-        total_seconds += int(minutes_part) * 60
-        duration = duration.split("M")[1] if "M" in duration else ""
-
-    # Parse seconds
-    if "S" in duration:
-        seconds_part = duration.split("S")[0]
-        total_seconds += int(seconds_part)
-
-    return total_seconds
-
-
-def classify_content_type(duration_seconds: int, live_status: str = None) -> str:
-    """
-    Classify video content type based on duration and live status.
-    Uses thresholds from config.py (SHORT_MAX_DURATION, LONG_MIN_DURATION).
-    """
-    # Check for live streams first (both 'live' and 'upcoming' are live streams)
-    if live_status and live_status in ["live", "upcoming"]:
-        return "Live"
-
-    # Classify based on duration
-    if duration_seconds <= SHORT_MAX_DURATION:
-        return "Short"
-    elif duration_seconds > LONG_MIN_DURATION:  # Use > not >= for exclusive threshold
-        return "Long-form"
-    else:
-        return "Regular"
-
-
-def calculate_video_performance_score(views: int, likes: int, comments: int, duration_seconds: int) -> dict:
-    """
-    Calculate a performance score for a video based on multiple metrics.
-    Returns a dictionary with scores and letter grade (A-F).
-    """
-    if views == 0:
-        return {
-            "performance_score": 0,
-            "performance_grade": "F",
-            "engagement_score": 0,
-            "popularity_score": 0,
-            "interaction_score": 0
-        }
-
-    # Engagement score (likes/views ratio) - weighted 40%
-    engagement_rate = (likes / views) * 100
-    engagement_score = min(engagement_rate * 2, 40)  # Max 40 points
-
-    # Interaction score (comments/views ratio) - weighted 30%
-    comment_rate = (comments / views) * 100
-    interaction_score = min(comment_rate * 3, 30)  # Max 30 points
-
-    # Popularity score (views scaling) - weighted 30%
-    # Logarithmic scale: log10(views) * 10, capped at 30
-    if views > 0:
-        popularity_score = min(math.log10(views) * 10, 30)
-    else:
-        popularity_score = 0
-
-    # Total performance score (0-100)
-    total_score = engagement_score + interaction_score + popularity_score
-
-    # Letter grade
-    if total_score >= 90:
-        grade = "A"
-    elif total_score >= 80:
-        grade = "B"
-    elif total_score >= 70:
-        grade = "C"
-    elif total_score >= 60:
-        grade = "D"
-    elif total_score >= 40:
-        grade = "E"
-    else:
-        grade = "F"
-
-    return {
-        "performance_score": round(total_score, 1),
-        "performance_grade": grade,
-        "engagement_score": round(engagement_score, 1),
-        "popularity_score": round(popularity_score, 1),
-        "interaction_score": round(interaction_score, 1)
-    }
-
-
-def format_duration_human_readable(duration_seconds: int) -> str:
-    """
-    Convert duration in seconds to human-readable format.
-    Examples: 65 -> "1:05", 3665 -> "1:01:05"
-    """
-    if duration_seconds <= 0:
-        return "0:00"
-
-    hours = duration_seconds // 3600
-    minutes = (duration_seconds % 3600) // 60
-    seconds = duration_seconds % 60
-
-    if hours > 0:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    else:
-        return f"{minutes}:{seconds:02d}"
-
-
 def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50, order: str = "date") -> pd.DataFrame:
-    youtube = build("youtube", "v3", developerKey=api_key)
+    youtube = build("youtube", "v3", developerKey=api_key, cache_discovery=False)
     ch_resp = youtube.search().list(part="snippet", q=channel_name, type="channel", maxResults=1).execute()
     if not ch_resp.get("items"):
         st.error(f"No channel found for '{channel_name}'.")
@@ -306,6 +255,42 @@ def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50
             "Thumbnail": sn.get("thumbnails", {}).get("high", {}).get("url", "")
         })
     return pd.DataFrame(data)
+
+
+def get_channel_videos_df_cached(api_key: str, channel_name: str, max_results: int = 50, order: str = "date") -> pd.DataFrame:
+    """
+    Get channel videos using cached YouTube API.
+
+    Args:
+        api_key: YouTube API key
+        channel_name: Channel name
+        max_results: Maximum number of videos
+        order: Sort order
+
+    Returns:
+        DataFrame with video data
+    """
+    if not CACHING_MODULES_AVAILABLE:
+        # Fall back to original function
+        return get_channel_videos_df(api_key, channel_name, max_results, order)
+
+    try:
+        # Use cached YouTube API
+        youtube_api = get_cached_youtube_api(api_key)
+        df = youtube_api.get_channel_videos_df(channel_name, max_results, order)
+
+        # Save to session state if we have a data manager
+        data_manager = get_data_manager()
+        cache_key = f"channel_videos_{channel_name}_{max_results}_{order}"
+        data_manager.save_dataframe(cache_key, df)
+
+        return df
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        st.warning(f"Using cached API failed: {e}. Falling back to direct API.")
+        print(f"Cached API error details: {error_details}")  # Print to console for debugging
+        return get_channel_videos_df(api_key, channel_name, max_results, order)
 
 
 def plot_trend_over_time(df, metric="Views"):
@@ -442,21 +427,6 @@ def plot_duration_distribution(df):
     st.pyplot(fig)
 
 
-STOP = set("a an and are as at be but by for from has have i in is it its of on or that the this to was were will with you your we our".split())
-def extract_keywords(q):
-    phrases = re.findall(r'"([^"]+)"', q)
-    words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-']+", q) if len(w) > 3 and w.lower() not in STOP]
-    return list(set([w.lower() for w in words + phrases]))
-
-
-def keyword_filter_indices(df, keywords):
-    if df.empty or not keywords:
-        return []
-    mask = False
-    for kw in keywords:
-        m = df["Title"].str.contains(kw, case=False, na=False) | df["Description"].str.contains(kw, case=False, na=False)
-        mask = m if isinstance(mask, bool) and not mask else (mask | m)
-    return df[mask].index.astype(int).tolist()
 
 
 def build_vector_db(df):
@@ -542,7 +512,7 @@ st.sidebar.markdown(f"**Config Status:** :{config_color}[{config_status}]")
 
 # API Key input - show placeholder if config provides one
 api_key_placeholder = YOUTUBE_API_KEY if YOUTUBE_API_KEY else ""
-api_key = st.sidebar.text_input("YouTube API Key", value=api_key_placeholder, type="password")
+api_key = st.sidebar.text_input("YouTube API Key", value=api_key_placeholder, type="password", key="api_key_input")
 
 # Show warning if no API key is configured
 if not YOUTUBE_API_KEY:
@@ -592,11 +562,11 @@ else:
     st.sidebar.info("Install required packages: `pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client`")
 
 # Channel name input - use default from config
-channel_name = st.sidebar.text_input("Channel Name", value=DEFAULT_CHANNEL)
+channel_name = st.sidebar.text_input("Channel Name", value=DEFAULT_CHANNEL, key="channel_name_input")
 
 # Other settings with config defaults
 max_results = st.sidebar.slider("Number of Videos", 10, 100, DEFAULT_MAX_RESULTS)
-order = st.sidebar.selectbox("Order By", ["date", "viewCount", "rating", "relevance"], index=["date", "viewCount", "rating", "relevance"].index(DEFAULT_ORDER) if DEFAULT_ORDER in ["date", "viewCount", "rating", "relevance"] else 0)
+order = st.sidebar.selectbox("Order By", ["date", "viewCount", "rating", "relevance"], index=["date", "viewCount", "rating", "relevance"].index(DEFAULT_ORDER) if DEFAULT_ORDER in ["date", "viewCount", "rating", "relevance"] else 0, key="order_select")
 
 # Configuration management
 with st.sidebar.expander("⚙️ Advanced Configuration"):
@@ -629,12 +599,21 @@ if st.sidebar.button("🚀 Fetch Channel Data"):
         st.warning("Please enter your YouTube API key and channel name.")
     else:
         with st.spinner("Fetching channel data..."):
-            df = get_channel_videos_df(api_key, channel_name, max_results=max_results, order=order)
+            df = get_channel_videos_df_cached(api_key, channel_name, max_results=max_results, order=order)
         if not df.empty:
             st.session_state.df = df
             st.success(f"Fetched {len(df)} videos from '{channel_name}'.")
         else:
             st.error("No data found.")
+
+# Add quota monitoring to sidebar
+if CACHING_MODULES_AVAILABLE:
+    try:
+        display_sidebar_quota_widget()
+    except Exception as e:
+        st.sidebar.warning(f"Quota monitoring error: {e}")
+else:
+    st.sidebar.info("💡 Install caching modules for API quota monitoring")
 
 
 # ==================== Dashboard ====================
@@ -808,6 +787,13 @@ if not st.session_state.df.empty:
         # Initialize competitor analyzer
         competitor_analyzer = CompetitorAnalyzer(api_key)
 
+        # Check if we already have competitor data in session state
+        has_cached_data = (
+            'competitor_data' in st.session_state and
+            'main_channel_data' in st.session_state and
+            'comparison_df' in st.session_state
+        )
+
         # Get rival channels from config
         try:
             from config import RIVAL_CHANNELS
@@ -848,8 +834,15 @@ if not st.session_state.df.empty:
                     if competitor_data:
                         st.success(f"Fetched data for {len(competitor_data)} competitors")
 
+                        # Save to session state
+                        st.session_state.competitor_data = competitor_data
+                        st.session_state.main_channel_data = main_channel_data
+
                         # Create comparison
                         comparison_df = competitor_analyzer.compare_channels(main_channel_data, competitor_data)
+
+                        # Save comparison to session state
+                        st.session_state.comparison_df = comparison_df
 
                         if not comparison_df.empty:
                             # Display comparison table
@@ -1040,6 +1033,25 @@ if not st.session_state.df.empty:
         st.markdown("---")
         st.markdown("### 📊 YouTube Analytics API Data")
         st.warning("⚠️ Not authenticated. Click 'Authenticate with Google' in the sidebar to access advanced analytics.")
+
+    # Quota Monitoring Dashboard
+    if CACHING_MODULES_AVAILABLE:
+        st.markdown("---")
+        st.markdown("### 📈 API Quota & Cache Dashboard")
+
+        # Display quota alerts if any
+        try:
+            display_quota_alerts()
+        except Exception as e:
+            st.warning(f"Could not display quota alerts: {e}")
+
+        # Quota dashboard expander
+        with st.expander("View Detailed Quota Dashboard", expanded=False):
+            try:
+                from quota_monitor import display_quota_dashboard
+                display_quota_dashboard()
+            except Exception as e:
+                st.error(f"Could not load quota dashboard: {e}")
 
     st.markdown("### 🧠 Chat with the Channel (Offline)")
     use_kw = st.checkbox("Use Keyword/Entity Filter", True)

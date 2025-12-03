@@ -183,7 +183,7 @@ class AuthManager:
 
         if not self.youtube_service:
             try:
-                self.youtube_service = build('youtube', 'v3', credentials=self.credentials)
+                self.youtube_service = build('youtube', 'v3', credentials=self.credentials, cache_discovery=False)
                 print("[OK] YouTube Data API service created")
             except Exception as e:
                 print(f"[ERROR] Failed to create YouTube service: {e}")
@@ -199,7 +199,7 @@ class AuthManager:
 
         if not self.analytics_service:
             try:
-                self.analytics_service = build('youtubeAnalytics', 'v2', credentials=self.credentials)
+                self.analytics_service = build('youtubeAnalytics', 'v2', credentials=self.credentials, cache_discovery=False)
                 print("[OK] YouTube Analytics API service created")
             except Exception as e:
                 print(f"[ERROR] Failed to create Analytics service: {e}")

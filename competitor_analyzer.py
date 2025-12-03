@@ -54,7 +54,7 @@ class CompetitorAnalyzer:
             from googleapiclient.discovery import build
             from googleapiclient.errors import HttpError
 
-            youtube = build('youtube', 'v3', developerKey=self.api_key)
+            youtube = build('youtube', 'v3', developerKey=self.api_key, cache_discovery=False)
 
             # First, search for the channel
             search_response = youtube.search().list(
