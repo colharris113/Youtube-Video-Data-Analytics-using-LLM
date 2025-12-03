@@ -44,7 +44,7 @@ class AnalyticsFetcher:
         'video': 'video',
         'playlist': 'playlist',
         'channel': 'channel',
-        'traffic_source': 'trafficSource',
+        'traffic_source': 'insightTrafficSourceType',
         'device_type': 'deviceType',
         'operating_system': 'operatingSystem',
         'country': 'country',
