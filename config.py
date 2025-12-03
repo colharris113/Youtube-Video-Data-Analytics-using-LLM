@@ -31,6 +31,12 @@ except ImportError:
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 DEFAULT_CHANNEL = os.getenv("DEFAULT_YOUTUBE_CHANNEL", "")
 
+# ==================== OAuth 2.0 Configuration ====================
+# Required for YouTube Analytics API (watch time, demographics, traffic sources)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501")
+
 # ==================== Ollama Configuration ====================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:20b")  # Default model for summarization
@@ -65,6 +71,19 @@ def validate_config() -> bool:
     if not DEFAULT_CHANNEL:
         warnings.append("No default channel set. Set DEFAULT_YOUTUBE_CHANNEL environment variable or in .env file.")
 
+    # OAuth configuration warnings (optional for basic functionality)
+    oauth_configured = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+    if not oauth_configured:
+        warnings.append("OAuth credentials not configured. YouTube Analytics API features (watch time, demographics, traffic sources) will not be available. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env file.")
+    else:
+        print("[OK] OAuth credentials configured for YouTube Analytics API")
+
+    # Check for client_secret.json file
+    if os.path.exists("client_secret.json"):
+        print("[OK] Found client_secret.json file for OAuth authentication")
+    elif oauth_configured:
+        print("[INFO] Using OAuth credentials from environment variables")
+
     # Warnings (app will work but might not be optimal)
     if YOUTUBE_API_KEY and len(YOUTUBE_API_KEY) < 20:
         warnings.append("YouTube API key appears to be too short. Please verify your API key.")
@@ -88,6 +107,8 @@ def get_config_summary() -> dict:
         "youtube_api_key_set": bool(YOUTUBE_API_KEY),
         "youtube_api_key_length": len(YOUTUBE_API_KEY) if YOUTUBE_API_KEY else 0,
         "default_channel": DEFAULT_CHANNEL or "[Not set]",
+        "oauth_configured": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
+        "client_secret_file_exists": os.path.exists("client_secret.json"),
         "ollama_configured": OLLAMA_BASE_URL != "http://localhost:11434",
         "ollama_model": OLLAMA_MODEL,
         "max_results": DEFAULT_MAX_RESULTS,

@@ -19,6 +19,9 @@ try:
         SHORT_MAX_DURATION,
         LONG_MIN_DURATION,
         RIVAL_CHANNELS,
+        GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET,
+        GOOGLE_REDIRECT_URI,
         validate_config,
         get_config_summary
     )
@@ -28,6 +31,9 @@ except ImportError:
     # Fallback defaults
     YOUTUBE_API_KEY = ""
     DEFAULT_CHANNEL = "The Uranium Hunter"
+    GOOGLE_CLIENT_ID = ""
+    GOOGLE_CLIENT_SECRET = ""
+    GOOGLE_REDIRECT_URI = "http://localhost:8501"
     DEFAULT_MAX_RESULTS = 50
     DEFAULT_ORDER = "date"
     OLLAMA_BASE_URL = "http://localhost:11434"
@@ -45,6 +51,15 @@ try:
     OLLAMA_IMPORTED = True
 except Exception:
     OLLAMA_IMPORTED = False
+
+# Import authentication and analytics modules
+try:
+    from auth_manager import get_auth_manager
+    from analytics_fetcher import AnalyticsFetcher
+    AUTH_MODULES_AVAILABLE = True
+except ImportError as e:
+    AUTH_MODULES_AVAILABLE = False
+    print(f"[WARNING] Auth modules not available: {e}")
 
 
 # ==================== Streamlit Setup ====================
@@ -501,6 +516,49 @@ api_key = st.sidebar.text_input("YouTube API Key", value=api_key_placeholder, ty
 if not YOUTUBE_API_KEY:
     st.sidebar.warning("⚠️ No API key configured. Set YOUTUBE_API_KEY in .env file or enter it above.")
 
+# YouTube Analytics API Authentication
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔐 YouTube Analytics API")
+
+if AUTH_MODULES_AVAILABLE:
+    # Initialize auth manager
+    auth_manager = get_auth_manager()
+
+    # Check authentication status
+    auth_status = auth_manager.get_auth_status()
+
+    if auth_status["authenticated"]:
+        st.sidebar.success("✅ Authenticated with YouTube Analytics API")
+
+        # Show authentication details in expander
+        with st.sidebar.expander("Authentication Details"):
+            st.write(f"**Status:** Authenticated")
+            if auth_status["expires_at"]:
+                from datetime import datetime
+                expires_at = datetime.fromisoformat(auth_status["expires_at"].replace('Z', '+00:00'))
+                st.write(f"**Expires:** {expires_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            st.write(f"**Scopes:** {', '.join(auth_status['scopes'])}")
+
+            # Logout button
+            if st.button("Logout"):
+                auth_manager.logout()
+                st.rerun()
+    else:
+        st.sidebar.warning("⚠️ Not authenticated")
+        st.sidebar.info("YouTube Analytics API provides advanced metrics: watch time, demographics, traffic sources, subscriber analytics.")
+
+        # Authentication button
+        if st.sidebar.button("Authenticate with Google"):
+            with st.spinner("Starting authentication..."):
+                if auth_manager.authenticate():
+                    st.success("Authentication successful!")
+                    st.rerun()
+                else:
+                    st.error("Authentication failed. Check console for details.")
+else:
+    st.sidebar.warning("⚠️ Authentication modules not available")
+    st.sidebar.info("Install required packages: `pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client`")
+
 # Channel name input - use default from config
 channel_name = st.sidebar.text_input("Channel Name", value=DEFAULT_CHANNEL)
 
@@ -551,6 +609,15 @@ if st.sidebar.button("🚀 Fetch Channel Data"):
 if not st.session_state.df.empty:
     df = st.session_state.df
 
+    # Initialize auth manager for dashboard section
+    auth_status = {"authenticated": False}
+    if AUTH_MODULES_AVAILABLE:
+        try:
+            auth_manager = get_auth_manager()
+            auth_status = auth_manager.get_auth_status()
+        except Exception as e:
+            st.warning(f"Authentication error: {e}")
+
     # Display dataframe with new columns
     st.markdown("### 📊 Video Data")
     display_columns = ["Title", "Published", "Content_Type", "Views", "Likes", "Comments", "Engagement_Rate", "Duration"]
@@ -586,6 +653,110 @@ if not st.session_state.df.empty:
         plot_top_videos(df, metric, top_n)
     with c6:
         plot_trend_over_time(df, metric)
+
+    # YouTube Analytics API Data (if authenticated)
+    if AUTH_MODULES_AVAILABLE and auth_status.get("authenticated", False):
+        st.markdown("---")
+        st.markdown("### 📊 YouTube Analytics API Data")
+        st.info("Advanced metrics from YouTube Analytics API (requires OAuth authentication)")
+
+        # Create analytics fetcher
+        analytics_fetcher = AnalyticsFetcher()
+
+        # Date range selector
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.selectbox(
+                "Start Date",
+                ["7daysAgo", "30daysAgo", "90daysAgo", "custom"],
+                index=1,
+                key="analytics_start"
+            )
+            if start_date == "custom":
+                start_date = st.date_input("Custom Start Date", value=pd.Timestamp.now() - pd.Timedelta(days=30))
+                start_date = start_date.strftime("%Y-%m-%d")
+
+        with col2:
+            end_date = st.selectbox(
+                "End Date",
+                ["today", "yesterday", "custom"],
+                index=0,
+                key="analytics_end"
+            )
+            if end_date == "custom":
+                end_date = st.date_input("Custom End Date", value=pd.Timestamp.now())
+                end_date = end_date.strftime("%Y-%m-%d")
+
+        # Analytics tabs
+        analytics_tabs = st.tabs(["Traffic Sources", "Demographics", "Device Usage", "Subscriber Analytics"])
+
+        with analytics_tabs[0]:
+            st.markdown("#### Traffic Source Analysis")
+            if st.button("Fetch Traffic Sources", key="fetch_traffic"):
+                with st.spinner("Fetching traffic source data..."):
+                    traffic_df = analytics_fetcher.get_traffic_sources(start_date, end_date)
+                    if not traffic_df.empty:
+                        st.dataframe(traffic_df)
+                        # Create pie chart
+                        fig, ax = plt.subplots(figsize=(8, 6))
+                        ax.pie(traffic_df['views'], labels=traffic_df['traffic_source'], autopct='%1.1f%%')
+                        ax.set_title('Traffic Sources by Views')
+                        st.pyplot(fig)
+                    else:
+                        st.warning("No traffic source data available")
+
+        with analytics_tabs[1]:
+            st.markdown("#### Demographic Insights")
+            if st.button("Fetch Demographics", key="fetch_demo"):
+                with st.spinner("Fetching demographic data..."):
+                    demographics = analytics_fetcher.get_demographics(start_date, end_date)
+                    if demographics:
+                        for demo_type, demo_df in demographics.items():
+                            if not demo_df.empty:
+                                st.markdown(f"**{demo_type.replace('_', ' ').title()}**")
+                                st.dataframe(demo_df)
+                    else:
+                        st.warning("No demographic data available")
+
+        with analytics_tabs[2]:
+            st.markdown("#### Device Usage")
+            if st.button("Fetch Device Usage", key="fetch_device"):
+                with st.spinner("Fetching device usage data..."):
+                    device_df = analytics_fetcher.get_device_usage(start_date, end_date)
+                    if not device_df.empty:
+                        st.dataframe(device_df)
+                        # Create bar chart
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        ax.bar(device_df['device_type'], device_df['views'])
+                        ax.set_xlabel('Device Type')
+                        ax.set_ylabel('Views')
+                        ax.set_title('Views by Device Type')
+                        plt.xticks(rotation=45)
+                        st.pyplot(fig)
+                    else:
+                        st.warning("No device usage data available")
+
+        with analytics_tabs[3]:
+            st.markdown("#### Subscriber Analytics")
+            if st.button("Fetch Subscriber Data", key="fetch_subs"):
+                with st.spinner("Fetching subscriber data..."):
+                    subs_df = analytics_fetcher.get_subscriber_analytics(start_date, end_date)
+                    if not subs_df.empty:
+                        st.dataframe(subs_df)
+                        # Create line chart
+                        fig, ax = plt.subplots(figsize=(12, 6))
+                        ax.plot(subs_df['day'], subs_df['subscribers_net'], marker='o')
+                        ax.set_xlabel('Date')
+                        ax.set_ylabel('Net Subscribers')
+                        ax.set_title('Daily Subscriber Growth')
+                        plt.xticks(rotation=45)
+                        st.pyplot(fig)
+                    else:
+                        st.warning("No subscriber data available")
+    elif AUTH_MODULES_AVAILABLE:
+        st.markdown("---")
+        st.markdown("### 📊 YouTube Analytics API Data")
+        st.warning("⚠️ Not authenticated. Click 'Authenticate with Google' in the sidebar to access advanced analytics.")
 
     st.markdown("### 🧠 Chat with the Channel (Offline)")
     use_kw = st.checkbox("Use Keyword/Entity Filter", True)
