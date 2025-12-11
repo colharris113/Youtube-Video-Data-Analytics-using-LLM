@@ -432,6 +432,74 @@ Transform the current basic YouTube analytics tool into a comprehensive growth p
 5. **Session Persistence**: Competitor analysis data now persists in session state across page refreshes
 6. **Quota Monitoring**: Real-time quota dashboard shows actual usage (205/10,000 used in testing) with detailed endpoint tracking
 
+### ✅ Phase 5: Multi-Page Navigation & Enhanced Caching - COMPLETED
+
+**Problem**: The single-page dashboard was becoming long and difficult to navigate. Users also experienced data loss on page refresh.
+
+**Solution**: Converted to multi-page Streamlit application with persistent caching across all pages.
+
+#### ✅ 5.1 Multi-Page Navigation System
+**Page Structure**:
+- `pages/01_Home.py`: Overview dashboard with key metrics and data fetching
+- `pages/02_Content_Analysis.py`: Content clustering, keyword analysis, and pattern detection
+- `pages/03_Competitive_Analysis.py`: Rival channel comparisons and gap analysis
+- `pages/04_Growth_Recommendations.py`: AI-powered strategy suggestions and optimization checklist
+- `pages/05_Topic_Explorer.py`: Topic analysis, trend identification, and title suggestion engine
+- `pages/06_Export_Reports.py`: Data export in multiple formats (CSV, Excel, JSON, PDF)
+
+**Navigation Features**:
+- Sidebar navigation with icons and clear labels on every page
+- Persistent session state across all pages using `data_manager`
+- Page switching with `st.switch_page()` for seamless navigation
+- Consistent UI/UX across all pages with standardized layout
+
+#### ✅ 5.2 Enhanced Caching System
+**Cross-Page Data Persistence**:
+- Main channel data (`st.session_state.df`) persists across all pages
+- Competitor analysis data (`competitor_data`, `comparison_df`, `main_channel_data`) saved to `data_manager`
+- Session restoration on page load for all data types
+- Automatic resume of most recent session when no active session
+
+**Critical Fixes Applied**:
+1. **Timezone Errors**: Fixed `TypeError: Cannot subtract tz-naive and tz-aware datetime-like objects` by using `pd.Timestamp.now(tz='UTC')`
+2. **ContentAnalyzer Initialization**: Fixed `ContentAnalyzer.__init__() takes 1 positional argument but 2 were given` by removing dataframe parameter
+3. **Competitor Analysis Column Names**: Fixed `KeyError: 'total_views'` by using correct column name `view_count`
+4. **Gap Analysis Method**: Fixed `'CompetitorAnalyzer' object has no attribute 'analyze_gaps'` by using correct method name `calculate_gap_analysis()`
+5. **Keyword Analysis**: Fixed `extract_keywords() got an unexpected keyword argument 'top_n'` by creating `extract_keyword_frequencies()` function
+6. **Datetime Conversion**: Fixed `AttributeError: Can only use .dt accessor with datetimelike values` by converting string columns to datetime when loading from cache
+7. **Regex Error**: Fixed `bad character range \-' at position 15` in `utils.py` regex pattern
+8. **DataFrame Truth Value**: Fixed `ValueError: The truth value of a DataFrame is ambiguous` by properly checking `comparison_df.empty` instead of `not comparison_df`
+9. **Streamlit Widget Error**: Fixed `StreamlitAPIException: st.session_state.export_selection cannot be modified after the widget with key export_selection is instantiated` by removing direct session state modification
+
+#### ✅ 5.3 Files Created/Modified
+**New Files**:
+- `app.py`: Main Streamlit app with page routing
+- `pages/01_Home.py`: Home page with data fetching and overview
+- `pages/02_Content_Analysis.py`: Content analysis with NLP clustering
+- `pages/03_Competitive_Analysis.py`: Competitor comparison and gap analysis
+- `pages/04_Growth_Recommendations.py`: AI-powered growth recommendations
+- `pages/05_Topic_Explorer.py`: Topic analysis and title suggestions
+- `pages/06_Export_Reports.py`: Data export and report generation
+- `youtube_utils.py`: YouTube API utilities separated from main app
+
+**Modified Files**:
+- `utils.py`: Added `extract_keyword_frequencies()` function and fixed regex error
+- `data_manager.py`: Enhanced with session value saving/loading methods
+- `start-streamlit.bat`: Updated to use new `app.py` instead of `youtube_analytics_app.py`
+- `test_content_classification.py`: Updated imports and references
+
+**Deleted Files**:
+- `youtube_analytics_app.py`: Replaced by multi-page architecture
+
+#### ✅ 5.4 Key Technical Decisions
+1. **Multi-Page Architecture**: Streamlit's native multi-page support with `pages/` directory
+2. **Time Zone Handling**: All datetime operations use UTC timezone for consistency
+3. **Data Persistence**: Two-layer caching (Streamlit session state + data_manager SQLite storage)
+4. **Error Handling**: Comprehensive try-catch blocks with debug info expanders
+5. **Code Organization**: Separated YouTube API utilities into `youtube_utils.py` to avoid circular imports
+
+**Status**: Phase 5 complete. All pages working with persistent caching across page refreshes.
+
 **Quota Management System Working**:
 - ✅ **API Response Caching**: Automatic caching with configurable TTL (24h for channel data, 12h for video data)
 - ✅ **Quota Tracking**: Detailed tracking of both YouTube Data API v3 and Analytics API usage

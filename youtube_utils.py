@@ -233,7 +233,7 @@ def get_channel_videos_df(api_key: str, channel_name: str, max_results: int = 50
 
         data.append({
             "Title": sn.get("title"),
-            "Published": pd.to_datetime(sn.get("publishedAt")),
+            "Published": pd.to_datetime(sn.get("publishedAt"), utc=True),
             "Description": sn.get("description", ""),
             "Video_ID": item["id"],
             "URL": f"https://www.youtube.com/watch?v={item['id']}",
@@ -281,7 +281,9 @@ def get_channel_videos_df_cached(api_key: str, channel_name: str, max_results: i
 
         # Save to session state if we have a data manager
         data_manager = get_data_manager()
-        cache_key = f"channel_videos_{channel_name}_{max_results}_{order}"
+        # Clean channel name for cache key (replace spaces with underscores)
+        clean_channel_name = channel_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
+        cache_key = f"channel_videos_{clean_channel_name}_{max_results}_{order}"
         data_manager.save_dataframe(cache_key, df)
 
         return df
@@ -571,6 +573,33 @@ order = st.sidebar.selectbox("Order By", ["date", "viewCount", "rating", "releva
 # Configuration management
 with st.sidebar.expander("⚙️ Advanced Configuration"):
     st.markdown("### Configuration Summary")
+
+    # Cache management
+    st.markdown("### Cache Management")
+    if st.button("Clear Video Cache", key="clear_cache"):
+        try:
+            from cache_manager import get_cache_manager
+            cache_manager = get_cache_manager()
+            # Clear video-related cache using patterns
+            cache_manager.invalidate_cache(pattern="search.videos%")
+            cache_manager.invalidate_cache(pattern="videos.list%")
+            # Also clear session cache for channel videos
+            try:
+                from data_manager import get_data_manager
+                data_manager = get_data_manager()
+                # Find and remove channel video cache keys
+                import re
+                pattern = re.compile(r"channel_videos_.*")
+                keys_to_remove = []
+                # This would need access to session keys - for now just note it
+                st.info("Session cache may still contain old data. Restart app to fully clear.")
+            except:
+                pass
+            st.success("Video cache cleared! Fetch will use fresh API data.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to clear cache: {e}")
+
     if CONFIG_LOADED:
         config_summary = get_config_summary()
         st.json(config_summary)

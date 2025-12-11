@@ -15,7 +15,7 @@ print("=" * 60)
 
 try:
     # Import the functions we need to test
-    from youtube_analytics_app import parse_duration_to_seconds, classify_content_type
+    from youtube_utils import parse_duration_to_seconds, classify_content_type
     from config import SHORT_MAX_DURATION, LONG_MIN_DURATION
 
     print(f"Configuration thresholds:")

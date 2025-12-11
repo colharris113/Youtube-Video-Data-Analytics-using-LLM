@@ -151,8 +151,27 @@ def extract_keywords(query: str) -> list:
     Extract keywords from a query string.
     """
     phrases = re.findall(r'\"([^\"]+)\"', query)
-    words = [w for w in re.findall(r"[A-Za-z][A-Za-z\\-']+", query) if len(w) > 3 and w.lower() not in STOP]
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z-']+", query) if len(w) > 3 and w.lower() not in STOP]
     return list(set([w.lower() for w in words + phrases]))
+
+
+def extract_keyword_frequencies(text: str, top_n: int = 20) -> list:
+    """
+    Extract keyword frequencies from text.
+    Returns list of (keyword, frequency) tuples sorted by frequency.
+    """
+    # Extract words (similar to extract_keywords but with frequency counting)
+    words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z-']+", text)
+             if len(w) > 3 and w.lower() not in STOP]
+
+    # Count frequencies
+    freq_dict = {}
+    for word in words:
+        freq_dict[word] = freq_dict.get(word, 0) + 1
+
+    # Sort by frequency (descending) and get top_n
+    sorted_freq = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+    return sorted_freq[:top_n]
 
 
 def keyword_filter_indices(df, keywords: list) -> list:

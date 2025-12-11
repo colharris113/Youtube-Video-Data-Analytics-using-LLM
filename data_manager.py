@@ -251,6 +251,40 @@ class DataManager:
 
         return self.state_manager.load_session_state(self.current_session_id)
 
+    def save_session_value(self, key: str, value: Any):
+        """
+        Save a single session value.
+
+        Args:
+            key: Key for the value
+            value: Value to save
+        """
+        if not self.current_session_id:
+            logger.warning("No active session for saving value")
+            return
+
+        # Load current state, update with new value, and save
+        current_state = self.load_session_state()
+        current_state[key] = value
+        self.save_session_state(current_state)
+
+    def get_session_value(self, key: str, default: Any = None) -> Any:
+        """
+        Get a single session value.
+
+        Args:
+            key: Key for the value
+            default: Default value if key not found
+
+        Returns:
+            The value or default
+        """
+        if not self.current_session_id:
+            return default
+
+        state = self.load_session_state()
+        return state.get(key, default)
+
     # ==================== Auto-save Functionality ====================
 
     def enable_auto_save(self, interval_minutes: int = 5):
